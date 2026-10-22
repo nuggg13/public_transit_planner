@@ -50,28 +50,6 @@ describe('Simulation', () => {
     expect(state.stops[0]).toEqual(stop)
   })
 
-  it('createStopAt creates a stop at given coordinates', () => {
-    const sim = createSimulation()
-    const result = sim.createStopAt(100, 100)
-    if (typeof result === 'string') throw new Error(result)
-    const stop = result
-    expect(stop.position.x).toBe(100)
-    expect(stop.position.y).toBe(100)
-    expect(stop.zone).toBe(ZoneType.RESIDENTIAL)
-    expect(stop.name).toBe('Halte 1')
-    expect(sim.getState().stops).toHaveLength(1)
-    expect(sim.getState().stops[0]).toEqual(stop)
-  })
-
-  it('createStopAt rejects when too close to existing stop', () => {
-    const sim = createSimulation()
-    sim.addStop({ id: 's1', position: { x: 100, y: 100 }, zone: ZoneType.RESIDENTIAL, name: 'Halte 1' })
-    const result = sim.createStopAt(150, 100)
-    if (typeof result !== 'string') throw new Error('expected rejection')
-    expect(result).toContain('Terlalu dekat')
-    expect(sim.getState().stops).toHaveLength(1)
-  })
-
   it('createRoute creates a route and buses when busCount > 0', () => {
     const stop1: Stop = { id: 's1', position: { x: 0, y: 0 }, zone: ZoneType.RESIDENTIAL, name: 's1' }
     const stop2: Stop = { id: 's2', position: { x: 100, y: 0 }, zone: ZoneType.COMMERCIAL, name: 's2' }
@@ -546,7 +524,7 @@ describe('statistics semantics (GDD 9)', () => {
   })
 })
 
-describe('stop growth (GDD 4.3)', () => {
+describe('stop growth', () => {
   function growthTick(sim: Simulation): void {
     sim.start()
     const state = sim.getState()
@@ -583,16 +561,16 @@ describe('stop growth (GDD 4.3)', () => {
     expect(state.nextStopAt).toBe(30)
   })
 
-  it('triples the interval after every stop', () => {
+  it('keeps the early growth pace, then uses a steady interval', () => {
     const sim = createSimulation()
     const state = sim.getState()
-    const expected = [30, 90, 270, 810]
+    const expected = [30, 90, 270, 390, 510]
     expected.forEach(next => {
       growthTick(sim)
       expect(state.nextStopAt).toBe(next)
     })
-    expect(state.stops).toHaveLength(4)
-    expect(state.stopsSpawned).toBe(4)
+    expect(state.stops).toHaveLength(5)
+    expect(state.stopsSpawned).toBe(5)
   })
 
   it('places 15 stops, all shapes valid and spaced apart, then stops growing', () => {
@@ -632,6 +610,36 @@ describe('stop growth (GDD 4.3)', () => {
       const expectedShapes = stopsInZone.map((_, idx) => shapes[idx % shapes.length])
       expect(stopsInZone.map(s => s.shape)).toEqual(expectedShapes)
     })
+  })
+})
+
+describe('rush hour demand', () => {
+  // Seed 19 draws 0.0585 first: below the rush chance, above the normal chance.
+  function demandSim(): Simulation {
+    const sim = new Simulation({
+      worldSize: { x: 1200, y: 800 },
+      stopDistance: 100,
+      defaultBusCapacity: 20,
+      seed: 19,
+    })
+    sim.addStop({ id: 's1', position: { x: 0, y: 0 }, zone: ZoneType.RESIDENTIAL, name: 'A' })
+    sim.addStop({ id: 's2', position: { x: 300, y: 0 }, zone: ZoneType.RESIDENTIAL, name: 'B' })
+    sim.getState().growthEnabled = false
+    sim.start()
+    return sim
+  }
+
+  it('skips demand outside rush hours', () => {
+    const sim = demandSim()
+    sim.update(0.25)
+    expect(sim.getState().totalDemand).toBe(0)
+  })
+
+  it('raises demand inside a rush hour window', () => {
+    const sim = demandSim()
+    sim.getState().time = 500
+    sim.update(0.25)
+    expect(sim.getState().totalDemand).toBe(1)
   })
 })
 

@@ -1,7 +1,7 @@
 import type { SimulationState, Stop, Route, Bus, Passenger, GameConfig, ZoneType, JourneyLeg } from './types'
 import { ZONE_MULTIPLIER, MAX_BUSES_PER_ROUTE, MAX_STOP_QUEUE } from './types'
 import { ZONE_SHAPES } from './shapes'
-import { randomPointInZone, zoneAt, clampToWorld } from './map'
+import { randomPointInZone } from './map'
 import { mulberry32, pickWeightedIndex } from './rng'
 
 const DEFAULT_ACTIVE_CAP = 500
@@ -12,8 +12,15 @@ const MIN_ROUTE_STOPS = 2
 const MAX_STEP = 0.25
 const MAX_STOPS = 15
 const FIRST_STOP_DELAY = 10
-const GROWTH_INTERVAL_FACTOR = 3
+const EARLY_GROWTH_INTERVALS = [20, 60, 180] as const
+const STEADY_GROWTH_INTERVAL = 120
 const GROWTH_RETRY_LIMIT = 20
+const DAY_LENGTH = 1440
+const RUSH_HOURS = [
+  [420, 540],
+  [960, 1080],
+] as const
+const RUSH_HOUR_MULTIPLIER = 2
 
 export interface RouteUpdate {
   name?: string
@@ -150,22 +157,6 @@ export class Simulation {
       if (!route.pendingStops) this.reconcileBuses(route)
     }
     return null
-  }
-
-  createStopAt(x: number, y: number): Stop | string {
-    const position = clampToWorld({ x, y })
-    if (!this.canPlaceStop(position)) return 'Terlalu dekat dengan halte lain (min 100 unit).'
-
-    const zone = zoneAt(position)
-    this.state.nextIds.stop += 1
-    const stop: Stop = {
-      id: `s${this.state.nextIds.stop}`,
-      position,
-      zone,
-      name: `Halte ${this.state.nextIds.stop}`,
-    }
-    this.addStop(stop)
-    return stop
   }
 
   deleteRoute(routeId: string): void {
@@ -336,8 +327,8 @@ export class Simulation {
     this.state.stops.push(stop)
     this.state.stopsPlaced[zone] += 1
     this.state.stopsSpawned += 1
-    this.state.nextStopAt =
-      FIRST_STOP_DELAY * GROWTH_INTERVAL_FACTOR ** this.state.stopsSpawned
+    const interval = EARLY_GROWTH_INTERVALS[this.state.stopsSpawned - 1] ?? STEADY_GROWTH_INTERVAL
+    this.state.nextStopAt += interval
     if (this.state.stopsSpawned >= MAX_STOPS) this.state.growthEnabled = false
   }
 
@@ -352,8 +343,15 @@ export class Simulation {
   private spawnDemand(gameDelta: number): void {
     if (this.state.stops.length < MIN_ROUTE_STOPS) return
 
+    const minuteOfDay = this.state.time % DAY_LENGTH
+    const demandMultiplier = RUSH_HOURS.some(
+      ([start, end]) => minuteOfDay >= start && minuteOfDay < end,
+    )
+      ? RUSH_HOUR_MULTIPLIER
+      : 1
+
     this.state.stops.forEach(stop => {
-      const chance = BASE_DEMAND_RATE * ZONE_MULTIPLIER[stop.zone] * gameDelta
+      const chance = BASE_DEMAND_RATE * ZONE_MULTIPLIER[stop.zone] * gameDelta * demandMultiplier
       if (this.random() >= chance) return
       if (this.waitingCountAt(stop.id) >= MAX_STOP_QUEUE) return
 

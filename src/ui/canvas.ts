@@ -1,13 +1,60 @@
-import type { SimulationState, Stop, Bus, Passenger } from '../game/types'
+import type { SimulationState, Stop, Bus, Passenger, Route } from '../game/types'
 import { MAX_STOP_QUEUE } from '../game/types'
 import type { StopShape } from '../game/shapes'
 import { ZONE_SHAPES } from '../game/shapes'
 import { DISTRICTS, DISTRICT_COLOR, WORLD_SIZE } from '../game/map'
 
-const INK = '#1b2a33'
-const PAPER = '#efeae0'
-const SHELL = '#d9d2c2'
-const QUEUE = '#c2412d'
+const LANE_SPREAD = 6
+
+export interface SegmentOffset {
+  dx: number
+  dy: number
+}
+
+const segmentKey = (a: Stop, b: Stop) => [a.id, b.id].sort().join('|')
+
+/**
+ * Offset tegak lurus per segmen untuk tiap rute, supaya rute yang melewati
+ * segmen halte yang sama tampil berdampingan alih-alih saling menutupi.
+ */
+export function computeSegmentOffsets(routes: Route[]): Map<string, SegmentOffset[]> {
+  const sharedSegments = new Map<string, string[]>()
+  routes.forEach(route => {
+    route.stops.slice(1).forEach((stop, index) => {
+      const key = segmentKey(route.stops[index], stop)
+      const routeIds = sharedSegments.get(key) ?? []
+      if (!routeIds.includes(route.id)) routeIds.push(route.id)
+      sharedSegments.set(key, routeIds)
+    })
+  })
+
+  const result = new Map<string, SegmentOffset[]>()
+  routes.forEach(route => {
+    const offsets = route.stops.slice(1).map((stop, index) => {
+      const start = route.stops[index]
+      const dx = stop.position.x - start.position.x
+      const dy = stop.position.y - start.position.y
+      const length = Math.hypot(dx, dy)
+      if (!length) return { dx: 0, dy: 0 }
+
+      const routeIds = sharedSegments.get(segmentKey(start, stop)) ?? []
+      const lane = routeIds.indexOf(route.id)
+      const offset = routeIds.length > 1 ? (lane - (routeIds.length - 1) / 2) * LANE_SPREAD : 0
+      const direction = start.id < stop.id ? 1 : -1
+      return {
+        dx: (-dy / length) * offset * direction,
+        dy: (dx / length) * offset * direction,
+      }
+    })
+    result.set(route.id, offsets)
+  })
+  return result
+}
+
+const INK = '#0f172a'
+const PAPER = '#f5f0e6'
+const SHELL = '#e8e0d0'
+const QUEUE = '#dc2626'
 
 interface DrawArgs {
   state: SimulationState
@@ -18,15 +65,75 @@ interface DrawArgs {
 }
 
 const AVENUES: Array<{ points: Array<[number, number]>; width: number }> = [
-  { points: [[0, 300], [300, 285], [620, 312], [900, 288], [1200, 305]], width: 26 },
-  { points: [[0, 560], [320, 585], [640, 552], [960, 580], [1200, 560]], width: 22 },
-  { points: [[430, 0], [418, 210], [446, 440], [424, 620], [440, 800]], width: 20 },
-  { points: [[806, 0], [822, 190], [800, 430], [828, 610], [812, 800]], width: 20 },
+  {
+    points: [
+      [0, 300],
+      [300, 285],
+      [620, 312],
+      [900, 288],
+      [1200, 305],
+    ],
+    width: 26,
+  },
+  {
+    points: [
+      [0, 560],
+      [320, 585],
+      [640, 552],
+      [960, 580],
+      [1200, 560],
+    ],
+    width: 22,
+  },
+  {
+    points: [
+      [430, 0],
+      [418, 210],
+      [446, 440],
+      [424, 620],
+      [440, 800],
+    ],
+    width: 20,
+  },
+  {
+    points: [
+      [806, 0],
+      [822, 190],
+      [800, 430],
+      [828, 610],
+      [812, 800],
+    ],
+    width: 20,
+  },
 ]
 
 export class GameCanvas {
   private ctx: CanvasRenderingContext2D
-  private args: DrawArgs = { state: { stops: [], routes: [], buses: [], passengers: [], deferredDemand: {}, servedCount: 0, totalDemand: 0, boardedCount: 0, boardedWaitSum: 0, occupancySum: 0, occupancySamples: 0, isRunning: false, speed: 1, time: 0, seed: 1, growthEnabled: true, nextStopAt: 10, stopsPlaced: { residential: 0, commercial: 0, activity_center: 0 }, stopsSpawned: 0, nextIds: { stop: 0, route: 0, bus: 0, passenger: 0 } }, draftRouteStopIds: [] }
+  private args: DrawArgs = {
+    state: {
+      stops: [],
+      routes: [],
+      buses: [],
+      passengers: [],
+      deferredDemand: {},
+      servedCount: 0,
+      totalDemand: 0,
+      boardedCount: 0,
+      boardedWaitSum: 0,
+      occupancySum: 0,
+      occupancySamples: 0,
+      isRunning: false,
+      speed: 1,
+      time: 0,
+      seed: 1,
+      growthEnabled: true,
+      nextStopAt: 10,
+      stopsPlaced: { residential: 0, commercial: 0, activity_center: 0 },
+      stopsSpawned: 0,
+      nextIds: { stop: 0, route: 0, bus: 0, passenger: 0 },
+    },
+    draftRouteStopIds: [],
+  }
 
   constructor(canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!
@@ -63,7 +170,7 @@ export class GameCanvas {
         return
       case 'pentagon':
         for (let i = 0; i < 5; i++) {
-          const theta = (Math.PI / 2) + (i * 2 * Math.PI) / 5
+          const theta = Math.PI / 2 + (i * 2 * Math.PI) / 5
           const px = cx + r * Math.cos(theta)
           const py = cy + r * Math.sin(theta)
           if (i === 0) ctx.moveTo(px, py)
@@ -73,7 +180,7 @@ export class GameCanvas {
         return
       case 'hexagon':
         for (let i = 0; i < 6; i++) {
-          const theta = (Math.PI / 2) + (i * 2 * Math.PI) / 6
+          const theta = Math.PI / 2 + (i * 2 * Math.PI) / 6
           const px = cx + r * Math.cos(theta)
           const py = cy + r * Math.sin(theta)
           if (i === 0) ctx.moveTo(px, py)
@@ -166,30 +273,55 @@ export class GameCanvas {
   }
 
   private drawRoutes(): void {
-    this.args.state.routes.forEach(route => {
-      if (route.stops.length < 2) return
-      const selected = route.id === this.args.selectedRouteId
+    const routes = this.args.state.routes.filter(route => route.stops.length >= 2)
+    const offsetsByRoute = computeSegmentOffsets(routes)
 
-      this.traceRoute(route.stops)
-      this.ctx.strokeStyle = PAPER
-      this.ctx.lineWidth = selected ? 9 : 7
+    const traceOffsetRoute = (route: Route) => {
+      this.ctx.beginPath()
+      route.stops.slice(1).forEach((stop, index) => {
+        const start = route.stops[index]
+        const offset = offsetsByRoute.get(route.id)?.[index] ?? {
+          dx: 0,
+          dy: 0,
+        }
+        const startX = start.position.x + offset.dx
+        const startY = start.position.y + offset.dy
+        const stopX = stop.position.x + offset.dx
+        const stopY = stop.position.y + offset.dy
+
+        if (index === 0) this.ctx.moveTo(startX, startY)
+        else this.ctx.lineTo(startX, startY)
+        this.ctx.lineTo(stopX, stopY)
+      })
+    }
+
+    const strokeRoute = (route: Route, color: string, lineWidth: number) => {
+      traceOffsetRoute(route)
+      this.ctx.strokeStyle = color
+      this.ctx.lineWidth = lineWidth
       this.ctx.lineCap = 'round'
       this.ctx.lineJoin = 'round'
       this.ctx.stroke()
+    }
 
-      this.traceRoute(route.stops)
-      this.ctx.strokeStyle = route.color
-      this.ctx.lineWidth = selected ? 5 : 3
+    this.ctx.lineJoin = 'round'
+    routes.forEach(route => {
+      const selected = route.id === this.args.selectedRouteId
+      strokeRoute(route, PAPER, selected ? 9 : 7)
+    })
+    routes.forEach(route => {
+      const selected = route.id === this.args.selectedRouteId
+      strokeRoute(route, route.color, selected ? 5 : 3)
+    })
+    routes.forEach(route => {
+      if (!route.pendingStops || route.pendingStops.length < 2) return
+      this.traceRoute(route.pendingStops)
+      this.ctx.strokeStyle = INK
+      this.ctx.lineWidth = 2
+      this.ctx.lineCap = 'round'
+      this.ctx.setLineDash([6, 6])
       this.ctx.stroke()
-
-      if (route.pendingStops && route.pendingStops.length >= 2) {
-        this.traceRoute(route.pendingStops)
-        this.ctx.strokeStyle = INK
-        this.ctx.lineWidth = 2
-        this.ctx.setLineDash([6, 6])
-        this.ctx.stroke()
-        this.ctx.setLineDash([])
-      }
+      this.ctx.setLineDash([])
     })
     this.ctx.lineCap = 'butt'
     this.ctx.lineJoin = 'miter'

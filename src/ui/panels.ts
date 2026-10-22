@@ -108,7 +108,12 @@ export class InfoPanel {
     return wrap
   }
 
-  createStepper(value: number, min: number, max: number, onChange: (next: number) => void): HTMLElement {
+  createStepper(
+    value: number,
+    min: number,
+    max: number,
+    onChange: (next: number) => void,
+  ): HTMLElement {
     const wrap = document.createElement('div')
 
     const labelEl = document.createElement('span')
@@ -153,12 +158,46 @@ export class InfoPanel {
     items: { id: string; name: string }[],
     onMove: (id: string, delta: -1 | 1) => void,
     onRemove: (id: string) => void,
+    onReorder?: (fromIndex: number, toIndex: number) => void,
   ): HTMLElement {
     const list = document.createElement('ol')
     list.className = 'stop-order'
 
+    let draggedIndex: number | null = null
+
     items.forEach((item, index) => {
       const li = document.createElement('li')
+      li.draggable = true
+      li.dataset.id = item.id
+      li.dataset.index = String(index)
+
+      li.addEventListener('dragstart', e => {
+        draggedIndex = index
+        li.classList.add('is-dragging')
+        e.dataTransfer?.setData('text/plain', String(index))
+      })
+
+      li.addEventListener('dragend', () => {
+        li.classList.remove('is-dragging')
+        list.querySelectorAll('li').forEach(el => el.classList.remove('drag-over'))
+      })
+
+      li.addEventListener('dragover', e => {
+        e.preventDefault()
+        li.classList.add('drag-over')
+      })
+
+      li.addEventListener('dragleave', () => {
+        li.classList.remove('drag-over')
+      })
+
+      li.addEventListener('drop', e => {
+        e.preventDefault()
+        li.classList.remove('drag-over')
+        if (draggedIndex !== null && draggedIndex !== index && onReorder) {
+          onReorder(draggedIndex, index)
+        }
+      })
 
       const order = document.createElement('span')
       order.className = 'order-index'
@@ -204,4 +243,4 @@ export class InfoPanel {
   }
 }
 
-const ROUTE_PALETTE = ['#c2412d', '#2f6f7a', '#e0a32e', '#3f6e5a', '#2c4a7c']
+const ROUTE_PALETTE = ['#dc2626', '#2563eb', '#f59e0b', '#059669', '#7c3aed']

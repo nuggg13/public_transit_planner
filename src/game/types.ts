@@ -21,7 +21,7 @@ export const ZONE_LABEL: Record<ZoneType, string> = {
   activity_center: 'Pusat aktivitas',
 }
 
-export const ROUTE_COLORS = ['#C2412D', '#2F6F7A', '#E0A32E', '#3F6E5A', '#2C4A7C']
+export const ROUTE_COLORS = ['#dc2626', '#2563eb', '#f59e0b', '#059669', '#7c3aed']
 
 export const MAX_BUSES_PER_ROUTE = 10
 

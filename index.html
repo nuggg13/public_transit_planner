@@ -9,15 +9,15 @@
     <style>
       :root {
         color-scheme: light;
-        --tinta: #1b2a33;
-        --tinta-2: #2d414d;
-        --kertas: #efeae0;
-        --puing: #d9d2c2;
-        --sinyal: #c2412d;
-        --amber: #e0a32e;
-        --verdigris: #3f6e5a;
-        --line: rgba(27, 42, 51, 0.28);
-        --line-soft: rgba(27, 42, 51, 0.14);
+              --tinta: #0f172a;
+              --tinta-2: #1e293b;
+              --kertas: #f5f0e6;
+              --puing: #e8e0d0;
+              --sinyal: #dc2626;
+              --amber: #f59e0b;
+              --verdigris: #059669;
+              --line: rgba(15, 23, 42, 0.25);
+              --line-soft: rgba(15, 23, 42, 0.12);
         font-family: 'Segoe UI', system-ui, sans-serif;
         font-synthesis: none;
         text-rendering: optimizeLegibility;
@@ -29,7 +29,7 @@
       body { margin: 0; min-width: 320px; }
       button, input { font: inherit; }
 
-      h1, h2, h3, .display { font-family: Bahnschrift, 'Segoe UI Semibold', 'Segoe UI', sans-serif; }
+      h1, h2, h3, .display { font-family: Bahnschrift, 'DIN Alternate', 'Segoe UI', sans-serif; font-weight: 700; letter-spacing: -0.01em; }
 
       #app { display: flex; flex-direction: column; height: 100vh; min-height: 540px; }
 
@@ -333,6 +333,13 @@
       .order-btn:hover { background: rgba(27, 42, 51, 0.08); }
       .order-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
       .order-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+      .stop-order li[draggable='true'] { cursor: grab; }
+      .stop-order li[draggable='true']:active { cursor: grabbing; }
+      .stop-order li.is-dragging { opacity: 0.4; }
+      .stop-order li.drag-over {
+        box-shadow: inset 0 2px 0 var(--amber);
+        background: rgba(245, 158, 11, 0.12);
+      }
 
       .field-label {
         display: block;

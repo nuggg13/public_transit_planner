@@ -65,8 +65,8 @@ function routeById(id: string | null): Route | undefined {
 
 function nextRouteColor(): string {
   const used = new Set(simulation.getState().routes.map(route => route.color))
-  const free = ['#c2412d', '#2f6f7a', '#e0a32e', '#3f6e5a', '#2c4a7c'].find(color => !used.has(color))
-  return free ?? '#2c4a7c'
+  const free = ['#dc2626', '#2563eb', '#f59e0b', '#059669', '#7c3aed'].find(color => !used.has(color))
+  return free ?? '#7c3aed'
 }
 
 function button(label: string, className: string, onClick: () => void): HTMLButtonElement {
@@ -148,8 +148,8 @@ function render(): void {
       tool === 'select'
         ? appendRouteId
           ? `Menambah halte ke ${routeById(appendRouteId)?.name}. Klik halte yang sudah ada di peta. Klik "Tambah halte" lagi untuk selesai.`
-          : 'Klik halte atau garis rute untuk melihat detailnya. Klik peta kosong untuk menambah halte baru. Halte juga muncul otomatis saat simulasi berjalan.'
-        : 'Klik halte berurutan untuk menyusun rute, atau klik peta kosong untuk halte baru, lalu buat.',
+          : 'Klik halte atau garis rute untuk melihat detailnya. Halte baru muncul otomatis saat simulasi berjalan.'
+          : 'Klik halte yang sudah ada secara berurutan untuk menyusun rute, lalu buat.',
     ),
   )
   panel.appendChild(tools)
@@ -173,6 +173,11 @@ function render(): void {
           },
           id => {
             draftStopIds = draftStopIds.filter(value => value !== id)
+            render()
+          },
+          (fromIndex, toIndex) => {
+            const [moved] = draftStopIds.splice(fromIndex, 1)
+            draftStopIds.splice(toIndex, 0, moved)
             render()
           },
         ),
@@ -238,6 +243,14 @@ function render(): void {
         },
         id => {
           const stops = selectedRoute.stops.filter(stop => stop.id !== id)
+          const error = simulation.updateRoute(selectedRoute.id, { stops: stops.map(stop => stop.id) })
+          if (error) notify(error)
+          render()
+        },
+        (fromIndex, toIndex) => {
+          const stops = [...selectedRoute.stops]
+          const [moved] = stops.splice(fromIndex, 1)
+          stops.splice(toIndex, 0, moved)
           const error = simulation.updateRoute(selectedRoute.id, { stops: stops.map(stop => stop.id) })
           if (error) notify(error)
           render()
@@ -370,28 +383,9 @@ canvas.addEventListener('click', event => {
 
   if (appendRouteId) {
     notify('Halte yang ditambahkan ke rute harus halte yang sudah ada di peta.')
-    render()
-    return
   }
 
-  const newStop = simulation.createStopAt(point.x, point.y)
-  if (typeof newStop === 'string') {
-    notify(newStop)
-    selectedStopId = null
-    selectedRouteId = null
-    render()
-    return
-  }
-
-  if (tool === 'createRoute') {
-    draftStopIds.push(newStop.id)
-    selectedStopId = newStop.id
-    selectedRouteId = null
-    render()
-    return
-  }
-
-  selectedStopId = newStop.id
+  selectedStopId = null
   selectedRouteId = null
   render()
 })
