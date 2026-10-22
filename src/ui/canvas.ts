@@ -1,0 +1,349 @@
+import type { SimulationState, Stop, Bus, Passenger } from '../game/types'
+import { MAX_STOP_QUEUE } from '../game/types'
+import type { StopShape } from '../game/shapes'
+import { ZONE_SHAPES } from '../game/shapes'
+import { DISTRICTS, DISTRICT_COLOR, WORLD_SIZE } from '../game/map'
+
+const INK = '#1b2a33'
+const PAPER = '#efeae0'
+const SHELL = '#d9d2c2'
+const QUEUE = '#c2412d'
+
+interface DrawArgs {
+  state: SimulationState
+  selectedStopId?: string
+  selectedRouteId?: string
+  draftRouteStopIds: string[]
+  hoverStopId?: string
+}
+
+const AVENUES: Array<{ points: Array<[number, number]>; width: number }> = [
+  { points: [[0, 300], [300, 285], [620, 312], [900, 288], [1200, 305]], width: 26 },
+  { points: [[0, 560], [320, 585], [640, 552], [960, 580], [1200, 560]], width: 22 },
+  { points: [[430, 0], [418, 210], [446, 440], [424, 620], [440, 800]], width: 20 },
+  { points: [[806, 0], [822, 190], [800, 430], [828, 610], [812, 800]], width: 20 },
+]
+
+export class GameCanvas {
+  private ctx: CanvasRenderingContext2D
+  private args: DrawArgs = { state: { stops: [], routes: [], buses: [], passengers: [], deferredDemand: {}, servedCount: 0, totalDemand: 0, boardedCount: 0, boardedWaitSum: 0, occupancySum: 0, occupancySamples: 0, isRunning: false, speed: 1, time: 0, seed: 1, growthEnabled: true, nextStopAt: 10, stopsPlaced: { residential: 0, commercial: 0, activity_center: 0 }, stopsSpawned: 0, nextIds: { stop: 0, route: 0, bus: 0, passenger: 0 } }, draftRouteStopIds: [] }
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.ctx = canvas.getContext('2d')!
+  }
+
+  private traceShape(shape: StopShape, cx: number, cy: number, r: number): void {
+    const ctx = this.ctx
+    const cos30 = Math.cos(Math.PI / 6)
+    const sin30 = Math.sin(Math.PI / 6)
+    const cos45 = Math.cos(Math.PI / 4)
+    switch (shape) {
+      case 'circle':
+        ctx.beginPath()
+        ctx.arc(cx, cy, r, 0, Math.PI * 2)
+        break
+      case 'square':
+        ctx.beginPath()
+        ctx.rect(cx - r, cy - r, r * 2, r * 2)
+        return
+      case 'triangle':
+        ctx.beginPath()
+        ctx.moveTo(cx, cy - r)
+        ctx.lineTo(cx + r * cos30, cy + r * sin30)
+        ctx.lineTo(cx - r * cos30, cy + r * sin30)
+        ctx.closePath()
+        return
+      case 'parallelogram':
+        ctx.beginPath()
+        ctx.moveTo(cx - r * cos45, cy - r * 0.6)
+        ctx.lineTo(cx + r, cy)
+        ctx.lineTo(cx - r * cos45, cy + r * 0.6)
+        ctx.lineTo(cx - r * 1.8, cy)
+        ctx.closePath()
+        return
+      case 'pentagon':
+        for (let i = 0; i < 5; i++) {
+          const theta = (Math.PI / 2) + (i * 2 * Math.PI) / 5
+          const px = cx + r * Math.cos(theta)
+          const py = cy + r * Math.sin(theta)
+          if (i === 0) ctx.moveTo(px, py)
+          else ctx.lineTo(px, py)
+        }
+        ctx.closePath()
+        return
+      case 'hexagon':
+        for (let i = 0; i < 6; i++) {
+          const theta = (Math.PI / 2) + (i * 2 * Math.PI) / 6
+          const px = cx + r * Math.cos(theta)
+          const py = cy + r * Math.sin(theta)
+          if (i === 0) ctx.moveTo(px, py)
+          else ctx.lineTo(px, py)
+        }
+        ctx.closePath()
+        return
+      case 'oval':
+        ctx.beginPath()
+        ctx.ellipse(cx, cy, r * 1.35, r * 0.9, 0, 0, Math.PI * 2)
+        return
+      case 'rhombus':
+        ctx.beginPath()
+        ctx.moveTo(cx, cy - r)
+        ctx.lineTo(cx + r * 0.75, cy)
+        ctx.lineTo(cx, cy + r)
+        ctx.lineTo(cx - r * 0.75, cy)
+        ctx.closePath()
+        return
+      case 'trapezoid':
+        ctx.beginPath()
+        ctx.moveTo(cx - r * 0.5, cy - r * 0.75)
+        ctx.lineTo(cx + r * 0.8, cy - r * 0.75)
+        ctx.lineTo(cx + r * 0.5, cy + r * 0.8)
+        ctx.lineTo(cx - r * 0.8, cy + r * 0.8)
+        ctx.closePath()
+        return
+    }
+  }
+
+  private drawCityMap(): void {
+    const ctx = this.ctx
+
+    DISTRICTS.forEach(district => {
+      this.ctx.beginPath()
+      district.points.forEach(([x, y], i) => {
+        if (i === 0) this.ctx.moveTo(x, y)
+        else this.ctx.lineTo(x, y)
+      })
+      this.ctx.closePath()
+      ctx.fillStyle = DISTRICT_COLOR[district.zone]
+      ctx.fill()
+    })
+
+    ctx.save()
+    ctx.strokeStyle = 'rgba(27, 42, 51, 0.16)'
+    ctx.lineWidth = 1
+    DISTRICTS.forEach(district => {
+      this.ctx.beginPath()
+      district.points.forEach(([x, y], i) => {
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      })
+      ctx.closePath()
+      ctx.stroke()
+    })
+    ctx.restore()
+
+    AVENUES.forEach(({ points, width }) => {
+      ctx.beginPath()
+      ctx.moveTo(points[0][0], points[0][1])
+      points.slice(1).forEach(([x, y]) => ctx.lineTo(x, y))
+      ctx.strokeStyle = PAPER
+      ctx.lineWidth = width
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      ctx.stroke()
+      ctx.strokeStyle = 'rgba(27, 42, 51, 0.15)'
+      ctx.lineWidth = 1
+      ctx.stroke()
+    })
+    ctx.lineCap = 'butt'
+    ctx.lineJoin = 'miter'
+
+    ctx.font = '600 13px Bahnschrift, "Segoe UI", sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
+    DISTRICTS.forEach(district => {
+      const [x, y] = district.labelAt
+      ctx.fillStyle = 'rgba(27, 42, 51, 0.42)'
+      ctx.fillText(district.label.toUpperCase(), x, y)
+    })
+  }
+
+  private traceRoute(stops: Stop[]): void {
+    const ctx = this.ctx
+    ctx.beginPath()
+    ctx.moveTo(stops[0].position.x, stops[0].position.y)
+    stops.slice(1).forEach(s => ctx.lineTo(s.position.x, s.position.y))
+  }
+
+  private drawRoutes(): void {
+    this.args.state.routes.forEach(route => {
+      if (route.stops.length < 2) return
+      const selected = route.id === this.args.selectedRouteId
+
+      this.traceRoute(route.stops)
+      this.ctx.strokeStyle = PAPER
+      this.ctx.lineWidth = selected ? 9 : 7
+      this.ctx.lineCap = 'round'
+      this.ctx.lineJoin = 'round'
+      this.ctx.stroke()
+
+      this.traceRoute(route.stops)
+      this.ctx.strokeStyle = route.color
+      this.ctx.lineWidth = selected ? 5 : 3
+      this.ctx.stroke()
+
+      if (route.pendingStops && route.pendingStops.length >= 2) {
+        this.traceRoute(route.pendingStops)
+        this.ctx.strokeStyle = INK
+        this.ctx.lineWidth = 2
+        this.ctx.setLineDash([6, 6])
+        this.ctx.stroke()
+        this.ctx.setLineDash([])
+      }
+    })
+    this.ctx.lineCap = 'butt'
+    this.ctx.lineJoin = 'miter'
+  }
+
+  private drawDraftRoute(): void {
+    const ids = this.args.draftRouteStopIds
+    if (ids.length < 2) return
+    const stops = ids
+      .map(id => this.args.state.stops.find(s => s.id === id))
+      .filter((s): s is Stop => s !== undefined)
+    if (stops.length < 2) return
+    this.traceRoute(stops)
+    this.ctx.strokeStyle = INK
+    this.ctx.lineWidth = 3
+    this.ctx.setLineDash([9, 7])
+    this.ctx.stroke()
+    this.ctx.setLineDash([])
+  }
+
+  private drawQueues(state: SimulationState): void {
+    const byStop = new Map<string, Passenger[]>()
+    state.passengers.forEach(p => {
+      if (p.status !== 'waiting') return
+      const queue = byStop.get(p.originStopId)
+      if (queue) queue.push(p)
+      else byStop.set(p.originStopId, [p])
+    })
+
+    const ctx = this.ctx
+    ctx.save()
+    ctx.font = '600 10px Bahnschrift, "Segoe UI", sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+
+    byStop.forEach((queue, stopId) => {
+      const stop = state.stops.find(s => s.id === stopId)
+      if (!stop) return
+      const shown = Math.min(MAX_STOP_QUEUE, queue.length)
+      const columns = 5
+      const gapX = 22
+      const gapY = 20
+      const startX = stop.position.x - ((columns - 1) * gapX) / 2
+      for (let i = 0; i < shown; i++) {
+        const p = queue[i]
+        const dest = state.stops.find(s => s.id === p.destinationStopId)
+        const shape = dest?.shape ?? ZONE_SHAPES[dest?.zone ?? stop.zone][0]
+        const x = startX + (i % columns) * gapX
+        const y = stop.position.y + 34 + Math.floor(i / columns) * gapY
+        this.traceShape(shape, x, y, 9)
+        ctx.fillStyle = PAPER
+        ctx.fill()
+        this.traceShape(shape, x, y, 6)
+        ctx.fillStyle = QUEUE
+        ctx.fill()
+      }
+      if (queue.length > shown) {
+        ctx.fillStyle = QUEUE
+        ctx.fillText(`+${queue.length - shown}`, startX + columns * gapX, stop.position.y + 40)
+      }
+    })
+
+    ctx.restore()
+  }
+
+  private drawStop(stop: Stop): void {
+    const { x, y } = stop.position
+    const ctx = this.ctx
+    const selected = stop.id === this.args.selectedStopId
+    const hovered = stop.id === this.args.hoverStopId
+    const inDraft = this.args.draftRouteStopIds.includes(stop.id)
+    const radius = selected ? 16 : 14
+    const shape = stop.shape ?? ZONE_SHAPES[stop.zone][0]
+
+    this.traceShape(shape, x, y, radius)
+    ctx.fillStyle = PAPER
+    ctx.fill()
+
+    this.traceShape(shape, x, y, radius * 0.55)
+    ctx.fillStyle = INK
+    ctx.fill()
+
+    if (selected || hovered || inDraft) {
+      this.traceShape(shape, x, y, radius + 5)
+      ctx.strokeStyle = selected ? QUEUE : INK
+      ctx.lineWidth = selected ? 3 : 1.5
+      ctx.stroke()
+    }
+
+    ctx.font = '11px Bahnschrift, "Segoe UI", sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
+    const width = ctx.measureText(stop.name).width
+    ctx.fillStyle = 'rgba(239, 234, 224, 0.88)'
+    ctx.fillRect(x - width / 2 - 4, y - radius - 22, width + 8, 14)
+    ctx.fillStyle = INK
+    ctx.fillText(stop.name, x, y - radius - 9)
+  }
+
+  private drawBus(bus: Bus): void {
+    const route = this.args.state.routes.find(r => r.id === bus.routeId)
+    const ctx = this.ctx
+    const { x, y } = bus.position
+    const angle = bus.direction === -1 ? Math.PI : 0
+
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.rotate(angle)
+    if (bus.retiring) ctx.globalAlpha = 0.45
+
+    ctx.beginPath()
+    ctx.roundRect(-12, -7, 24, 14, 3)
+    ctx.fillStyle = PAPER
+    ctx.fill()
+
+    ctx.beginPath()
+    ctx.roundRect(-11, -6, 22, 12, 2)
+    ctx.fillStyle = route?.color ?? INK
+    ctx.fill()
+
+    ctx.beginPath()
+    ctx.moveTo(11, 0)
+    ctx.lineTo(5, -4)
+    ctx.lineTo(5, 4)
+    ctx.closePath()
+    ctx.fillStyle = PAPER
+    ctx.fill()
+
+    ctx.restore()
+
+    ctx.font = '600 9.5px Consolas, monospace'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    const text = String(bus.passengers)
+    const tw = ctx.measureText(text).width
+    ctx.beginPath()
+    ctx.roundRect(x - tw / 2 - 2.5, y - 6, tw + 5, 12, 2)
+    ctx.fillStyle = 'rgba(239, 234, 224, 0.92)'
+    ctx.fill()
+    ctx.fillStyle = INK
+    ctx.fillText(text, x, y)
+  }
+
+  draw(args: DrawArgs): void {
+    this.args = args
+
+    this.ctx.fillStyle = SHELL
+    this.ctx.fillRect(0, 0, WORLD_SIZE.x, WORLD_SIZE.y)
+
+    this.drawCityMap()
+    this.drawQueues(args.state)
+    this.drawRoutes()
+    this.drawDraftRoute()
+    args.state.stops.forEach(stop => this.drawStop(stop))
+    args.state.buses.forEach(bus => this.drawBus(bus))
+  }
+}

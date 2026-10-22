@@ -1,0 +1,40 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Backups
+*.bak
+
+# Playwright MCP snapshots
+.playwright-mcp/
+
+# UI audit artifacts
+ui-check.json
+ui-snapshot*.yml
+transit-accessibility.yml
+transit-ui-*.png
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Documentation (draft/internal)
+docs/
+
