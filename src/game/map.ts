@@ -35,9 +35,21 @@ export const DISTRICTS: District[] = [
 ]
 
 export const DISTRICT_COLOR: Record<Zone, string> = {
-  residential: '#d7e6d5',
-  commercial: '#e9e0cc',
-  activity_center: '#f0dcc4',
+  residential: '#e3ede1',
+  commercial: '#ece7e1',
+  activity_center: '#f6eedb',
+}
+
+export const DISTRICT_BORDER_COLOR: Record<Zone, string> = {
+  residential: '#c4d8bf',
+  commercial: '#d8cfc4',
+  activity_center: '#e7d7b5',
+}
+
+export const DISTRICT_LABEL_COLOR: Record<Zone, string> = {
+  residential: '#2d5a27',
+  commercial: '#7c2d12',
+  activity_center: '#854d0e',
 }
 
 export function pointInPolygon(x: number, y: number, points: Array<[number, number]>): boolean {

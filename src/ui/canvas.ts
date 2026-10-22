@@ -2,7 +2,13 @@ import type { SimulationState, Stop, Bus, Passenger, Route } from '../game/types
 import { MAX_STOP_QUEUE } from '../game/types'
 import type { StopShape } from '../game/shapes'
 import { ZONE_SHAPES } from '../game/shapes'
-import { DISTRICTS, DISTRICT_COLOR, WORLD_SIZE } from '../game/map'
+import {
+  DISTRICTS,
+  DISTRICT_BORDER_COLOR,
+  DISTRICT_COLOR,
+  DISTRICT_LABEL_COLOR,
+  WORLD_SIZE,
+} from '../game/map'
 
 const LANE_SPREAD = 6
 
@@ -51,10 +57,10 @@ export function computeSegmentOffsets(routes: Route[]): Map<string, SegmentOffse
   return result
 }
 
-const INK = '#0f172a'
-const PAPER = '#f5f0e6'
-const SHELL = '#e8e0d0'
-const QUEUE = '#dc2626'
+const INK = '#1c1917'
+const PAPER = '#ffffff'
+const SHELL = '#f4efe6'
+const QUEUE = '#991b1b'
 
 interface DrawArgs {
   state: SimulationState
@@ -109,6 +115,7 @@ const AVENUES: Array<{ points: Array<[number, number]>; width: number }> = [
 
 export class GameCanvas {
   private ctx: CanvasRenderingContext2D
+  private dotGrid: CanvasPattern | null
   private args: DrawArgs = {
     state: {
       stops: [],
@@ -137,6 +144,39 @@ export class GameCanvas {
 
   constructor(canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!
+    const patternCanvas = document.createElement('canvas')
+    patternCanvas.width = 20
+    patternCanvas.height = 20
+    const patternContext = patternCanvas.getContext('2d')
+    if (patternContext) {
+      patternContext.fillStyle = 'rgba(28, 25, 23, 0.12)'
+      patternContext.beginPath()
+      patternContext.arc(2, 2, 1, 0, Math.PI * 2)
+      patternContext.fill()
+    }
+    this.dotGrid = patternContext ? this.ctx.createPattern(patternCanvas, 'repeat') : null
+  }
+
+  private traceDistrict(points: Array<[number, number]>): void {
+    const ctx = this.ctx
+    const radius = 16
+    ctx.beginPath()
+    points.forEach(([x, y], index) => {
+      const [prevX, prevY] = points[(index + points.length - 1) % points.length]
+      const [nextX, nextY] = points[(index + 1) % points.length]
+      const prevLength = Math.hypot(prevX - x, prevY - y)
+      const nextLength = Math.hypot(nextX - x, nextY - y)
+      const insetPrev = Math.min(radius, prevLength / 2)
+      const insetNext = Math.min(radius, nextLength / 2)
+      const startX = x + ((prevX - x) / prevLength) * insetPrev
+      const startY = y + ((prevY - y) / prevLength) * insetPrev
+      const endX = x + ((nextX - x) / nextLength) * insetNext
+      const endY = y + ((nextY - y) / nextLength) * insetNext
+      if (index === 0) ctx.moveTo(startX, startY)
+      else ctx.lineTo(startX, startY)
+      ctx.quadraticCurveTo(x, y, endX, endY)
+    })
+    ctx.closePath()
   }
 
   private traceShape(shape: StopShape, cx: number, cy: number, r: number): void {
@@ -215,52 +255,50 @@ export class GameCanvas {
     const ctx = this.ctx
 
     DISTRICTS.forEach(district => {
-      this.ctx.beginPath()
-      district.points.forEach(([x, y], i) => {
-        if (i === 0) this.ctx.moveTo(x, y)
-        else this.ctx.lineTo(x, y)
-      })
-      this.ctx.closePath()
+      this.traceDistrict(district.points)
       ctx.fillStyle = DISTRICT_COLOR[district.zone]
       ctx.fill()
     })
 
-    ctx.save()
-    ctx.strokeStyle = 'rgba(27, 42, 51, 0.16)'
-    ctx.lineWidth = 1
+    if (this.dotGrid) {
+      ctx.fillStyle = this.dotGrid
+      ctx.fillRect(0, 0, WORLD_SIZE.x, WORLD_SIZE.y)
+    }
+
     DISTRICTS.forEach(district => {
-      this.ctx.beginPath()
-      district.points.forEach(([x, y], i) => {
-        if (i === 0) ctx.moveTo(x, y)
-        else ctx.lineTo(x, y)
-      })
-      ctx.closePath()
+      this.traceDistrict(district.points)
+      ctx.strokeStyle = DISTRICT_BORDER_COLOR[district.zone]
+      ctx.lineWidth = 1.5
       ctx.stroke()
     })
-    ctx.restore()
 
     AVENUES.forEach(({ points, width }) => {
       ctx.beginPath()
       ctx.moveTo(points[0][0], points[0][1])
       points.slice(1).forEach(([x, y]) => ctx.lineTo(x, y))
-      ctx.strokeStyle = PAPER
-      ctx.lineWidth = width
+      ctx.strokeStyle = '#57534e'
+      ctx.lineWidth = width + 2
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
       ctx.stroke()
-      ctx.strokeStyle = 'rgba(27, 42, 51, 0.15)'
-      ctx.lineWidth = 1
+      ctx.strokeStyle = PAPER
+      ctx.lineWidth = width
       ctx.stroke()
+      ctx.strokeStyle = '#d6cbbe'
+      ctx.lineWidth = 1
+      ctx.setLineDash([8, 10])
+      ctx.stroke()
+      ctx.setLineDash([])
     })
     ctx.lineCap = 'butt'
     ctx.lineJoin = 'miter'
 
-    ctx.font = '600 13px Bahnschrift, "Segoe UI", sans-serif'
+    ctx.font = '600 12px system-ui, "Segoe UI", sans-serif'
     ctx.textAlign = 'left'
     ctx.textBaseline = 'alphabetic'
     DISTRICTS.forEach(district => {
       const [x, y] = district.labelAt
-      ctx.fillStyle = 'rgba(27, 42, 51, 0.42)'
+      ctx.fillStyle = DISTRICT_LABEL_COLOR[district.zone]
       ctx.fillText(district.label.toUpperCase(), x, y)
     })
   }
@@ -353,7 +391,7 @@ export class GameCanvas {
 
     const ctx = this.ctx
     ctx.save()
-    ctx.font = '600 10px Bahnschrift, "Segoe UI", sans-serif'
+    ctx.font = '600 10px system-ui, "Segoe UI", sans-serif'
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
 
@@ -399,9 +437,12 @@ export class GameCanvas {
     this.traceShape(shape, x, y, radius)
     ctx.fillStyle = PAPER
     ctx.fill()
+    ctx.strokeStyle = INK
+    ctx.lineWidth = 2.5
+    ctx.stroke()
 
     this.traceShape(shape, x, y, radius * 0.55)
-    ctx.fillStyle = INK
+    ctx.fillStyle = QUEUE
     ctx.fill()
 
     if (selected || hovered || inDraft) {
@@ -411,11 +452,11 @@ export class GameCanvas {
       ctx.stroke()
     }
 
-    ctx.font = '11px Bahnschrift, "Segoe UI", sans-serif'
+    ctx.font = '11px system-ui, "Segoe UI", sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'bottom'
     const width = ctx.measureText(stop.name).width
-    ctx.fillStyle = 'rgba(239, 234, 224, 0.88)'
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.94)'
     ctx.fillRect(x - width / 2 - 4, y - radius - 22, width + 8, 14)
     ctx.fillStyle = INK
     ctx.fillText(stop.name, x, y - radius - 9)
