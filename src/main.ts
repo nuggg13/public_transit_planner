@@ -23,8 +23,8 @@ const hud = {
 }
 
 const simButtons = {
-  play: document.getElementById('play-btn')!,
-  pause: document.getElementById('pause-btn')!,
+  toggle: document.getElementById('sim-toggle-btn')!,
+  toggleLabel: document.getElementById('sim-toggle-label')!,
   speed1: document.getElementById('speed-1-btn')!,
   speed2: document.getElementById('speed-2-btn')!,
   speed4: document.getElementById('speed-4-btn')!,
@@ -34,6 +34,7 @@ const simulation = new Simulation({
   worldSize: WORLD_SIZE,
   stopDistance: 100,
   defaultBusCapacity: 20,
+  seed: Math.floor(Math.random() * 0xffffffff),
 })
 
 let tool: ToolMode = 'select'
@@ -115,8 +116,8 @@ function render(): void {
 
   updateHud()
 
-  simButtons.play.setAttribute('aria-pressed', String(!stats.isRunning))
-  simButtons.pause.setAttribute('aria-pressed', String(stats.isRunning))
+  simButtons.toggle.dataset.running = String(stats.isRunning)
+  simButtons.toggleLabel.textContent = stats.isRunning ? 'Jeda' : 'Jalankan'
   simButtons.speed1.setAttribute('aria-pressed', String(stats.speed === 1))
   simButtons.speed2.setAttribute('aria-pressed', String(stats.speed === 2))
   simButtons.speed4.setAttribute('aria-pressed', String(stats.speed === 4))
@@ -390,13 +391,9 @@ canvas.addEventListener('click', event => {
   render()
 })
 
-simButtons.play.addEventListener('click', () => {
-  simulation.start()
-  render()
-})
-
-simButtons.pause.addEventListener('click', () => {
-  simulation.pause()
+simButtons.toggle.addEventListener('click', () => {
+  if (simulation.getState().isRunning) simulation.pause()
+  else simulation.start()
   render()
 })
 

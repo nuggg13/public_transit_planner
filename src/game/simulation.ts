@@ -13,7 +13,7 @@ const MAX_STEP = 0.25
 const MAX_STOPS = 15
 const FIRST_STOP_DELAY = 10
 const EARLY_GROWTH_INTERVALS = [20, 60, 180] as const
-const STEADY_GROWTH_INTERVAL = 120
+const STEADY_GROWTH_INTERVAL = 180
 const GROWTH_RETRY_LIMIT = 20
 const DAY_LENGTH = 1440
 const RUSH_HOURS = [
@@ -309,7 +309,7 @@ export class Simulation {
     const zones: ZoneType[] = ['residential', 'commercial', 'activity_center']
     const zone = zones[Math.floor(this.random() * zones.length)]
     const shapes = ZONE_SHAPES[zone]
-    const shape = shapes[this.state.stopsPlaced[zone] % shapes.length]
+    const shape = shapes[Math.floor(this.random() * shapes.length)]
     const position = this.findSpawnPosition(zone)
     if (!position) {
       this.state.nextStopAt = this.state.time + FIRST_STOP_DELAY

@@ -564,7 +564,7 @@ describe('stop growth', () => {
   it('keeps the early growth pace, then uses a steady interval', () => {
     const sim = createSimulation()
     const state = sim.getState()
-    const expected = [30, 90, 270, 390, 510]
+    const expected = [30, 90, 270, 450, 630]
     expected.forEach(next => {
       growthTick(sim)
       expect(state.nextStopAt).toBe(next)
@@ -599,16 +599,12 @@ describe('stop growth', () => {
     expect(state.nextStopAt).toBe(nextStopAt)
   })
 
-  it('assigns zone shapes in order as stops are placed', () => {
+  it('assigns zone shapes randomly as stops are placed', () => {
     const sim = createSimulation()
     for (let i = 0; i < 15; i++) growthTick(sim)
     const state = sim.getState()
-    const zones = ['residential', 'commercial', 'activity_center'] as const
-    zones.forEach(zone => {
-      const stopsInZone = state.stops.filter(s => s.zone === zone)
-      const shapes = ZONE_SHAPES[zone]
-      const expectedShapes = stopsInZone.map((_, idx) => shapes[idx % shapes.length])
-      expect(stopsInZone.map(s => s.shape)).toEqual(expectedShapes)
+    state.stops.forEach(stop => {
+      expect(ZONE_SHAPES[stop.zone]).toContain(stop.shape as StopShape)
     })
   })
 })
