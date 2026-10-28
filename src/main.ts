@@ -33,7 +33,7 @@ const simButtons = {
 const simulation = new Simulation({
   worldSize: WORLD_SIZE,
   stopDistance: 100,
-  defaultBusCapacity: 20,
+  defaultBusCapacity: 10,
   seed: Math.floor(Math.random() * 0xffffffff),
 })
 
@@ -89,16 +89,18 @@ function setTool(next: ToolMode): void {
 function appendStopToRoute(routeId: string, stopId: string): void {
   const route = routeById(routeId)
   if (!route) return
-  if (route.stops.some(stop => stop.id === stopId)) {
+  const displayedStops = route.pendingStops ?? route.stops
+  if (displayedStops.some(stop => stop.id === stopId)) {
     notify(`${route.name} sudah melayani halte itu.`)
     return
   }
-  const error = simulation.updateRoute(routeId, { stops: [...route.stops.map(stop => stop.id), stopId] })
+  const error = simulation.updateRoute(routeId, {
+    stops: [...displayedStops.map(stop => stop.id), stopId],
+  })
   if (error) notify(error)
 }
 
-function updateHud(): void {
-  const stats = simulation.getStatistics()
+function updateHud(stats: ReturnType<Simulation['getStatistics']>): void {
   hud.served.textContent = String(stats.totalPassengers)
   hud.waiting.textContent = String(stats.waitingPassengers)
   hud.avgWait.textContent =
@@ -114,8 +116,6 @@ function render(): void {
   const selectedRoute = routeById(selectedRouteId)
   const selectedStop = state.stops.find(stop => stop.id === selectedStopId)
 
-  updateHud()
-
   simButtons.toggle.dataset.running = String(stats.isRunning)
   simButtons.toggleLabel.textContent = stats.isRunning ? 'Jeda' : 'Jalankan'
   simButtons.speed1.setAttribute('aria-pressed', String(stats.speed === 1))
@@ -125,17 +125,18 @@ function render(): void {
   panel.clear()
 
   const service = panel.createSection('Kondisi layanan')
-  service.appendChild(panel.createStatRow('Terlayani', String(stats.totalPassengers)))
-  service.appendChild(panel.createStatRow('Permintaan', String(stats.totalDemand)))
-  service.appendChild(panel.createStatRow('Menunggu', String(stats.waitingPassengers)))
-  service.appendChild(panel.createStatRow('Di bus', String(stats.onboardPassengers)))
-  service.appendChild(panel.createStatRow('Rata-rata tunggu', stats.averageWaitingTime === null ? '—' : `${stats.averageWaitingTime.toFixed(1)} mnt`))
-  service.appendChild(panel.createStatRow('Tunggu terlama', stats.longestWait === null ? '—' : `${stats.longestWait.toFixed(1)} mnt`))
-  service.appendChild(panel.createStatRow('Tingkat layanan', stats.serviceRate === null ? '—' : `${stats.serviceRate.toFixed(0)}%`))
-  service.appendChild(panel.createStatRow('Utilisasi bus', stats.busUtilization === null ? '—' : `${stats.busUtilization.toFixed(0)}%`))
-  service.appendChild(panel.createStatRow('Tertunda', String(stats.deferredDemand)))
-  service.appendChild(panel.createStatRow('Waktu', `${Math.floor(stats.time)} mnt`))
+  service.appendChild(panel.createStatRow('Terlayani', '', 'totalPassengers'))
+  service.appendChild(panel.createStatRow('Permintaan', '', 'totalDemand'))
+  service.appendChild(panel.createStatRow('Menunggu', '', 'waitingPassengers'))
+  service.appendChild(panel.createStatRow('Di bus', '', 'onboardPassengers'))
+  service.appendChild(panel.createStatRow('Rata-rata tunggu', '', 'averageWaitingTime'))
+  service.appendChild(panel.createStatRow('Tunggu terlama', '', 'longestWait'))
+  service.appendChild(panel.createStatRow('Tingkat layanan', '', 'serviceRate'))
+  service.appendChild(panel.createStatRow('Utilisasi bus', '', 'busUtilization'))
+  service.appendChild(panel.createStatRow('Tertunda', '', 'deferredDemand'))
+  service.appendChild(panel.createStatRow('Waktu', '', 'time'))
   panel.appendChild(service)
+  updateServicePanel(stats)
 
   const tools = panel.createSection('Alat peta')
   tools.appendChild(
@@ -205,6 +206,7 @@ function render(): void {
 
   if (selectedRoute) {
     const routeSection = panel.createSection(`Rute ${selectedRoute.name}`)
+    const displayedStops = selectedRoute.pendingStops ?? selectedRoute.stops
     const nameInput = panel.createField(routeSection, `route-name-${selectedRoute.id}`, 'Nama rute', selectedRoute.name)
     nameInput.addEventListener('change', () => {
       const error = simulation.updateRoute(selectedRoute.id, { name: nameInput.value })
@@ -230,9 +232,9 @@ function render(): void {
 
     routeSection.appendChild(
       panel.createOrderList(
-        selectedRoute.stops.map(stop => ({ id: stop.id, name: stop.name })),
+        displayedStops.map(stop => ({ id: stop.id, name: stop.name })),
         (id, delta) => {
-          const stops = [...selectedRoute.stops]
+          const stops = [...displayedStops]
           const index = stops.findIndex(stop => stop.id === id)
           const target = index + delta
           if (index < 0 || target < 0 || target >= stops.length) return
@@ -243,13 +245,13 @@ function render(): void {
           render()
         },
         id => {
-          const stops = selectedRoute.stops.filter(stop => stop.id !== id)
+          const stops = displayedStops.filter(stop => stop.id !== id)
           const error = simulation.updateRoute(selectedRoute.id, { stops: stops.map(stop => stop.id) })
           if (error) notify(error)
           render()
         },
         (fromIndex, toIndex) => {
-          const stops = [...selectedRoute.stops]
+          const stops = [...displayedStops]
           const [moved] = stops.splice(fromIndex, 1)
           stops.splice(toIndex, 0, moved)
           const error = simulation.updateRoute(selectedRoute.id, { stops: stops.map(stop => stop.id) })
@@ -309,6 +311,31 @@ function render(): void {
   }
 
   draw()
+}
+
+function updateServicePanel(stats: ReturnType<Simulation['getStatistics']>): void {
+  panel.updateStat('totalPassengers', String(stats.totalPassengers))
+  panel.updateStat('totalDemand', String(stats.totalDemand))
+  panel.updateStat('waitingPassengers', String(stats.waitingPassengers))
+  panel.updateStat('onboardPassengers', String(stats.onboardPassengers))
+  panel.updateStat(
+    'averageWaitingTime',
+    stats.averageWaitingTime === null ? '—' : `${stats.averageWaitingTime.toFixed(1)} mnt`,
+  )
+  panel.updateStat(
+    'longestWait',
+    stats.longestWait === null ? '—' : `${stats.longestWait.toFixed(1)} mnt`,
+  )
+  panel.updateStat(
+    'serviceRate',
+    stats.serviceRate === null ? '—' : `${stats.serviceRate.toFixed(0)}%`,
+  )
+  panel.updateStat(
+    'busUtilization',
+    stats.busUtilization === null ? '—' : `${stats.busUtilization.toFixed(0)}%`,
+  )
+  panel.updateStat('deferredDemand', String(stats.deferredDemand))
+  panel.updateStat('time', `${Math.floor(stats.time)} mnt`)
 }
 
 function draw(): void {
@@ -413,9 +440,16 @@ simButtons.speed4.addEventListener('click', () => {
 })
 
 let panelPointerDown = false
+let panelDragActive = false
 let panelReleasedAt = -Infinity
 panel.container.addEventListener('pointerdown', () => {
   panelPointerDown = true
+})
+panel.container.addEventListener('dragstart', () => {
+  panelDragActive = true
+})
+panel.container.addEventListener('dragend', () => {
+  panelDragActive = false
 })
 window.addEventListener('pointerup', () => {
   panelPointerDown = false
@@ -429,15 +463,19 @@ window.addEventListener('pointercancel', () => {
 const PANEL_RELEASE_GRACE_MS = 300
 
 function panelIsBusy(): boolean {
+  if (panelDragActive) return true
   if (panelPointerDown) return true
   if (performance.now() - panelReleasedAt < PANEL_RELEASE_GRACE_MS) return true
-  return panel.container.contains(document.activeElement)
+  const activeElement = document.activeElement
+  return activeElement instanceof HTMLInputElement && panel.container.contains(activeElement)
 }
 
 let frames = 0
 function loop(): void {
   simulation.update(1 / 60)
-  updateHud()
+  const stats = simulation.getStatistics()
+  updateHud(stats)
+  updateServicePanel(stats)
   draw()
   frames += 1
   // Jangan rebuild panel saat user sedang menekan atau mengetik di panel: elemen

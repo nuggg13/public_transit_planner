@@ -24,7 +24,7 @@ export class InfoPanel {
     return section
   }
 
-  createStatRow(label: string, value: string): HTMLElement {
+  createStatRow(label: string, value: string, key?: string): HTMLElement {
     const row = document.createElement('div')
     row.className = 'stat-row'
 
@@ -34,12 +34,18 @@ export class InfoPanel {
 
     const valueEl = document.createElement('span')
     valueEl.className = 'stat-value'
+    if (key) valueEl.dataset.statKey = key
     valueEl.textContent = value
 
     row.appendChild(labelEl)
     row.appendChild(valueEl)
 
     return row
+  }
+
+  updateStat(key: string, value: string): void {
+    const valueEl = this.container.querySelector<HTMLElement>(`[data-stat-key="${key}"]`)
+    if (valueEl) valueEl.textContent = value
   }
 
   createButtonRow(buttons: HTMLElement[]): HTMLElement {
@@ -163,7 +169,22 @@ export class InfoPanel {
     const list = document.createElement('ol')
     list.className = 'stop-order'
 
-    let draggedIndex: number | null = null
+    let draggedItemId: string | null = null
+    let dropTargetId: string | null = null
+
+    const clearDragState = (): void => {
+      draggedItemId = null
+      dropTargetId = null
+      list.querySelectorAll('li').forEach(el => {
+        el.classList.remove('is-dragging', 'drag-over')
+      })
+    }
+
+    const markDropTarget = (target: HTMLElement): void => {
+      list.querySelectorAll('li').forEach(el => el.classList.remove('drag-over'))
+      target.classList.add('drag-over')
+      dropTargetId = target.dataset.id ?? null
+    }
 
     items.forEach((item, index) => {
       const li = document.createElement('li')
@@ -172,30 +193,44 @@ export class InfoPanel {
       li.dataset.index = String(index)
 
       li.addEventListener('dragstart', e => {
-        draggedIndex = index
+        draggedItemId = item.id
+        dropTargetId = null
         li.classList.add('is-dragging')
-        e.dataTransfer?.setData('text/plain', String(index))
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move'
+          e.dataTransfer.setData('text/plain', item.id)
+        }
       })
 
       li.addEventListener('dragend', () => {
-        li.classList.remove('is-dragging')
-        list.querySelectorAll('li').forEach(el => el.classList.remove('drag-over'))
+        clearDragState()
       })
 
       li.addEventListener('dragover', e => {
         e.preventDefault()
-        li.classList.add('drag-over')
+        if (draggedItemId !== null) markDropTarget(li)
       })
 
-      li.addEventListener('dragleave', () => {
-        li.classList.remove('drag-over')
+      li.addEventListener('dragleave', e => {
+        const relatedTarget = e.relatedTarget
+        if (!(relatedTarget instanceof Node) || !li.contains(relatedTarget)) {
+          if (dropTargetId === item.id) {
+            li.classList.remove('drag-over')
+          }
+        }
       })
 
       li.addEventListener('drop', e => {
         e.preventDefault()
-        li.classList.remove('drag-over')
-        if (draggedIndex !== null && draggedIndex !== index && onReorder) {
-          onReorder(draggedIndex, index)
+        const sourceId = draggedItemId ?? e.dataTransfer?.getData('text/plain') ?? null
+        const sourceIndex = items.findIndex(current => current.id === sourceId)
+        const targetId = dropTargetId ?? item.id
+        const targetIndex = items.findIndex(current => current.id === targetId)
+        const shouldReorder =
+          sourceIndex >= 0 && targetIndex >= 0 && sourceIndex !== targetIndex && onReorder
+        clearDragState()
+        if (shouldReorder) {
+          onReorder(sourceIndex, targetIndex)
         }
       })
 

@@ -473,34 +473,37 @@ export class GameCanvas {
     ctx.rotate(angle)
     if (bus.retiring) ctx.globalAlpha = 0.45
 
+    // ponytail: ukuran statis bus dan badge angka; jadikan dinamis jika ada fitur zoom
     ctx.beginPath()
-    ctx.roundRect(-12, -7, 24, 14, 3)
+    ctx.roundRect(-18, -10, 36, 20, 4)
     ctx.fillStyle = PAPER
     ctx.fill()
 
     ctx.beginPath()
-    ctx.roundRect(-11, -6, 22, 12, 2)
+    ctx.roundRect(-16, -8, 32, 16, 3)
     ctx.fillStyle = route?.color ?? INK
     ctx.fill()
 
+    // Front indicator (triangle)
     ctx.beginPath()
-    ctx.moveTo(11, 0)
-    ctx.lineTo(5, -4)
-    ctx.lineTo(5, 4)
+    ctx.moveTo(16, 0)
+    ctx.lineTo(8, -6)
+    ctx.lineTo(8, 6)
     ctx.closePath()
     ctx.fillStyle = PAPER
     ctx.fill()
 
     ctx.restore()
 
-    ctx.font = '600 9.5px Consolas, monospace'
+    // Larger, more visible passenger count
+    ctx.font = '700 14px Consolas, monospace'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     const text = String(bus.passengers)
     const tw = ctx.measureText(text).width
     ctx.beginPath()
-    ctx.roundRect(x - tw / 2 - 2.5, y - 6, tw + 5, 12, 2)
-    ctx.fillStyle = 'rgba(239, 234, 224, 0.92)'
+    ctx.roundRect(x - tw / 2 - 4, y - 9, tw + 8, 18, 3)
+    ctx.fillStyle = 'rgba(239, 234, 224, 0.95)'
     ctx.fill()
     ctx.fillStyle = INK
     ctx.fillText(text, x, y)
