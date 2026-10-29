@@ -2,7 +2,13 @@
 
 The 15 Halte Show adalah game strategi transit berbasis web. Pemain mengelola jaringan bus dengan menyusun rute di antara halte yang muncul bertahap, lalu mengamati dampaknya terhadap layanan penumpang.
 
-![Tampilan The 15 Halte Show](docs/gameplay-overview.png)
+## Tampilan gameplay
+
+![Awal permainan](gameplay-01-start.png)
+
+![Halte muncul dan permintaan penumpang mulai terbentuk](gameplay-02-stops.png)
+
+![Dua halte dipilih untuk membuat rute](gameplay-03-route.png)
 
 ## Tujuan game
 
